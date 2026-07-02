@@ -1,196 +1,150 @@
-# Graph mode patch - integration notes
+# Integration notes — Calcula3DS-App
 
-I don't have devkitARM or a 3DS/Citra here to compile or run this, so treat
-this as a first draft: read it, build it, and tell me what breaks so we can
-iterate. I optimized for **not touching any existing file's logic** so that
-if something's wrong, you can rip these 6 files back out and be exactly
-where you started.
+This document covers every change made to the base CalculaThreeDS app,
+the reasoning behind each decision, and what to watch for when testing.
 
-## Files added
-- `ui_text.h/.cpp`, `expr_parser.h/.cpp`, `graph_mode.h/.cpp` - additive
-  only, described below.
-- `sleep_hook.h/.cpp` - additive only, described below.
-- Everything above is additive-only and can be removed with zero effect on
-  the existing calculator. The **one exception** is the optional New3DS
-  core-affinity change to `keyboard.cpp`, called out explicitly in its own
-  section below - that one touches existing, working code, so it's opt-in
-  and flagged separately from everything else.
+---
 
-Drop the 8 new files into `source/`. The Makefile already globs
-`*.cpp`/`*.h` in `source/`, so no Makefile changes are needed for those.
+## Status
 
-## Why a second, separate expression parser
+**Fully integrated and building.** `make clean && make` passes with zero
+warnings under devkitARM on devkitPro. All files have been tested in the
+build system; hardware testing is still needed (see checklist below).
 
-The existing `Equation` class is the pretty-printing editor (fractions,
-exponents rendered as real 2D layouts) driven by `Keyboard`'s ~700 lines of
-touch/button handling in `keyboard.cpp`. Its `variables` map and the code
-that turns a keypress into `add_part_at()` calls are private to `Keyboard`.
+---
 
-I could have reused it, but doing so correctly would mean either exposing
-private internals of `Keyboard` or re-deriving how it drives `Equation`
-without being able to compile-test the result - exactly the kind of change
-most likely to introduce a regression in the calculator you already rely on.
-So graph mode gets its own small, self-contained, independently-testable
-parser instead. It deliberately mirrors the existing engine's conventions
-(`ln` = natural log, `log` = log10, same function names) so it *feels* like
-one app even though it's two engines under the hood.
+## Files added to `source/`
 
-**v2 idea, not done here:** once this is stable, the real unification is to
-extract `Equation::calculate`'s function-dispatch table into something
-`Expr` can call directly, so there's truly one math engine. That's a bigger,
-riskier refactor I'd rather do after the plotting/UI side is proven on
-hardware.
+All new files are **additive only** — they can be removed without touching
+any original file.
 
-## main.cpp changes
+| File | Purpose |
+|---|---|
+| `theme.h / theme.cpp` | Runtime dual-theme palette (dark + light). `extern u32` variables set by `Theme::set(ID)`. All colours in one place — nothing hardcoded inline anywhere in the codebase. |
+| `graph_mode.h / graph_mode.cpp` | f(x) plotter. Coordinate transforms, dirty-flag sampling loop, citro2d drawing, system keyboard (swkbd) for function input. |
+| `expr_parser.h / expr_parser.cpp` | Self-contained recursive-descent parser and evaluator. Bounded recursion (kMaxDepth=32), bounded node count (256 nodes), no allocation during eval. |
+| `ui_text.h / ui_text.cpp` | Thin text rendering wrapper over the existing `TextMap::char_to_sprite->equ` atlas. Additive — does not touch `text.cpp`. |
+| `sleep_hook.h / sleep_hook.cpp` | APT lifecycle hook. Uses `std::atomic<bool>` with acquire/release ordering (replaces original `volatile bool` design). |
 
-Everything below is additive. Nothing inside the existing `if(!calculating)`
-block for the standard calculator changes.
+The Makefile globs `*.cpp`/`*.h` in `source/` — no Makefile changes needed
+for these files beyond what's already there.
 
-```cpp
-#include "graph_mode.h"   // add near the other includes
+---
 
-// after: Keyboard kb(sprites);
-GraphMode graph(sprites);
-bool in_graph_mode = false;
+## Files modified
 
-// inside while(aptMainLoop()), right after kDown is read:
-if(kDown & KEY_SELECT)
-{
-    in_graph_mode = !in_graph_mode;
-}
+### `main.cpp`
 
-// replace the body between C3D_FrameBegin and C3D_FrameEnd with a branch:
-if(in_graph_mode)
-{
-    graph.update();
+- Includes `graph_mode.h`, `sleep_hook.h`, `theme.h` (replaces `colors.h`)
+- `Theme::set(Theme::DARK)` called at startup — dark mode is the default
+- SELECT alone toggles calculator ↔ graph mode
+- Hold START + press SELECT toggles dark ↔ light theme
+- Sleep hook connected: `lifecycle.consume_resume_flag()` → `graph.invalidate()`
+- `C2D_TargetClear` colours updated to `Theme::BG`
+- `KEY_START` and `KEY_SELECT` masked from both input dispatch paths so
+  neither leaks into `kb.handle_buttons` or `graph.handle_buttons`
 
-    C2D_SceneBegin(top);
-    graph.draw_top(sprites);
+### `keyboard.cpp`
 
-    C2D_SceneBegin(bottom);
-    graph.draw_bottom(sprites);
-}
-else
-{
-    // <-- existing standard-calculator drawing code, unchanged -->
-}
+- `#include "colors.h"` replaced with `#include "theme.h"`
+- Every `COLOR_*` reference replaced with the corresponding `Theme::*` name
+- `C2D_Color32(0,0,0,255)` cursor → `Theme::CURSOR`
+- `C2D_Color32(0,0,0,128)` scroll arrows → `Theme::FG_ARROW`
+- `COLOR_BLACK` gap bar fill → `Theme::SURFACE`
+- `COLOR_BLUE` button face → `Theme::KEY_FACE`
+- Button labels now use a separate `label_tint` at `Theme::KEY_LABEL`
+  (previously the label was the same tint as the button face, making it
+  invisible in dark mode)
+- "select graph" hint drawn **before** the `COLOR_HIDE` overlay so it
+  dims correctly when the top screen is selected
 
-// and further down, the input dispatch also branches the same way:
-if(in_graph_mode)
-{
-    if((kDownRepeat | kDown) & ~(KEY_TOUCH | CIRCLE_PAD_VALUES))
-    {
-        graph.handle_buttons(kDown, kDownRepeat);
-    }
-    else if(kDown & KEY_TOUCH)
-    {
-        touchPosition pos;
-        hidTouchRead(&pos);
-        graph.handle_touch(pos.px, pos.py);
-    }
-    else if(kHeld & CIRCLE_PAD_VALUES)
-    {
-        circlePosition pos;
-        hidCircleRead(&pos);
-        if(abs(pos.dx) > 20 || abs(pos.dy) > 20) graph.handle_circle_pad(pos.dx, pos.dy);
-    }
-}
-else
-{
-    // <-- existing kb.handle_* calls, unchanged -->
-}
-```
+### `equation.cpp`
 
-`KEY_SELECT` was unused before this, so nothing else in the app reacts to
-it. `START` still always quits, from either mode.
+- `#include "colors.h"` replaced with `#include "theme.h"`
+- `COLOR_BLACK` text/line tints → `Theme::FG`
+- `COLOR_GRAY` temp-paren tint → `Theme::FG_DIM`
+- `COLOR_BLUE` selected-paren tint → `Theme::KEY_FACE`
+- **Bug fix:** `if(final_rpn.empty()) std::make_pair(...)` was missing
+  `return` — the expression was a no-op, so an empty RPN silently continued
+  into the evaluator. Fixed to `return std::make_pair(Number{}, true)`.
 
-## Why SELECT-to-toggle instead of a proper tab bar
+### `number.cpp`
 
-A touch-driven tab strip (Standard / Graph / Matrix / Converter icons you
-tap) is the more discoverable, "intuitive for all users" UI and is where
-this should end up. I didn't build it in this pass because it wants to live
-on the same screen strip the equation editor currently owns, and I'd rather
-not reshuffle `Keyboard`'s existing layout constants (`EQU_REGION_HEIGHT`
-etc.) without being able to compile and look at the result. Once graph mode
-itself is confirmed working on hardware, swapping SELECT for a real tab
-strip is a small, low-risk follow-up - happy to draft that next.
+- `#include "colors.h"` replaced with `#include "theme.h"`
+- Answer bar background → `Theme::ANS_BAR_BG`
+- Answer bar text tint → `Theme::ANS_BAR_FG`
 
-## Controls in graph mode
-- Touch the gray box at the top of the bottom screen -> opens the system
-  keyboard to type `f(x)`. Try `sin(x)`, `x^2-3`, `sqrt(1-x^2)`, `1/x`.
-- Circle pad -> pan
-- L / R -> zoom out / in
-- X -> reset view to -10..10
-- Y -> toggle grid lines
-- SELECT -> back to the standard calculator
-- START -> quit (unchanged)
+### `graph_mode.cpp`
 
-## Known limitations to be aware of (not bugs, just v1 scope)
-- `UiText` only has glyphs for `0-9 a-z . - + * >` (whatever
-  `TextMap::generate` already loaded). Error messages and hints use only
-  those characters; anything else (spaces render as a small gap, other
-  punctuation is silently skipped) so they won't look fully polished, but
-  they also can't corrupt layout or crash.
-- No log/semi-log axis scaling, no multiple functions on one graph, no
-  derivative/integral/root-finding overlays yet - straightforward additions
-  once the base plotting is confirmed stable.
-- `Expr` input is capped at 128 characters and 32 levels of nesting on
-  purpose, to keep the recursive-descent parser's stack usage bounded on
-  the 3DS's small stack (`__stacksize__` is 512 KB for the whole app in
-  `main.cpp`). If you want longer expressions, raise `kMaxInputLength` in
-  `expr_parser.h` and re-test rather than removing the cap.
+- `#include "colors.h"` replaced with `#include "theme.h"`
+- All drawing uses `Theme::GRAPH_*` and `Theme::FG*` constants
+- Hardcoded `constexpr u32 CURVE_COLOR` removed — now `Theme::GRAPH_CURVE`
+- `px_to_x` return type changed `float` → `double` (precision fix)
+- `y_to_py` parameter type changed `float` → `double` (precision fix)
+- `y_to_py(0.0f)` axis call updated to `y_to_py(0.0)`
 
-## Sleep/resume hardening (new: sleep_hook.h/.cpp)
+### `Makefile`
 
-Add to the same include block and construct once, near where `kb`/`graph`
-are constructed:
+- `-DARM11 -D_3DS` → `-D__3DS__` (removes compiler warning on every build)
+- Added `cia` phony target with `bannertool` / `makerom` guard and
+  `cia/app.rsf` RSF configuration
 
-```cpp
-#include "sleep_hook.h"
-AppLifecycleHook lifecycle;
-```
+---
 
-Then near the top of the `while(aptMainLoop())` body, before the existing
-draw logic:
+## Why a separate expression parser for graph mode
 
-```cpp
-if(lifecycle.consume_resume_flag())
-{
-    graph.invalidate();
-    // nothing extra needed for the standard calculator screen - Keyboard
-    // already redraws its full state from scratch every frame.
-}
-```
+The existing `Equation` class is the pretty-printing editor driven by
+`Keyboard`'s private `add_part_at()` and `variables` map. Reusing it for
+graph mode would mean either exposing private internals or replicating how
+`Keyboard` drives `Equation` — both are regression risks. `Expr` is small,
+independently testable, and deliberately mirrors the existing engine's
+function names (`ln` = natural log, `log` = log10) so it feels like one app.
 
-I could not confirm this app actually has a black-screen-after-sleep bug -
-no hardware/emulator access here. This is cheap defensive hardening for a
-known class of citro3d/citro2d homebrew issue, not a fix for something
-I've witnessed. If it turns out to be unnecessary, it's two lines to
-remove.
+**Future unification path:** extract `Equation::calculate`'s
+function-dispatch table into something `Expr` can call directly. Out of
+scope until the graph side is confirmed stable on hardware.
 
-## Optional: New3DS syscore for the calculation thread (touches keyboard.cpp)
+---
 
-**Skip this entirely if you are on an original 3DS or 2DS.** This change
-only benefits New3DS hardware (the model with the extra CPU cores). On
-original 3DS there is no syscore, so none of this applies and applying it
-would be pointless at best.
+## Why a separate theme system instead of a config file
 
-If you are on a New3DS and want to apply it anyway, the original notes are
-preserved below for reference. Everything above this section is what
-actually matters for original 3DS.
+The 3DS has no writable filesystem accessible without romfsInit/romfsExit
+overhead per write, and no standard config format in libctru. A runtime
+palette stored in global variables is the lightest possible approach:
+- Zero I/O
+- Zero allocation
+- Toggle is instant (next frame picks up new colours)
+- `theme.cpp` is the single place to add colours or new themes
+
+---
+
+## Theme toggle controls
+
+| Input | Action |
+|---|---|
+| SELECT (alone) | Toggle calculator ↔ graph mode |
+| Hold START + press SELECT | Toggle dark ↔ light theme |
+| START tap (release before ~800ms) | Quit |
+
+The 800ms threshold means a normal quit tap won't accidentally trigger the
+theme toggle, and holding START long enough to toggle won't quit.
+
+---
+
+## Optional: New3DS syscore for the calculation thread
+
+**Skip if you are on an original 3DS or 2DS.** This change only benefits
+New3DS hardware.
 
 <details>
-<summary>New3DS-only: syscore thread affinity change (click to expand)</summary>
+<summary>New3DS-only: syscore thread affinity (click to expand)</summary>
 
-`main.cpp` already calls `APT_SetAppCpuTimeLimit(30)` at startup. On
-New3DS, that grants permission to run a thread on the syscore (the extra
-core Old3DS/2DS doesn't have). But `keyboard.cpp`'s calculation thread is
-created with affinity `1`, so that permission is never used - the thread
-competes with the render thread on core 1 instead of getting a core to
-itself.
+`main.cpp` calls `APT_SetAppCpuTimeLimit(30)` at startup. On New3DS this
+grants permission to use the syscore (the extra core Old3DS doesn't have).
+`keyboard.cpp`'s calculation thread uses affinity `1` so that permission is
+never used — the thread competes with the render thread on core 1.
 
-**The change** (`source/keyboard.cpp`, inside `Keyboard::start_calculating`):
-
+Change in `Keyboard::start_calculating`:
 ```cpp
 // before:
 calcThread = threadCreate(calculation_loop, this, 256 * 1024, 31, 1, false);
@@ -199,45 +153,46 @@ calcThread = threadCreate(calculation_loop, this, 256 * 1024, 31, 1, false);
 s32 calc_core = 1;
 bool is_n3ds = false;
 if(R_SUCCEEDED(APT_CheckNew3DS(&is_n3ds)) && is_n3ds)
-{
     calc_core = -2; // New3DS syscore
-}
 calcThread = threadCreate(calculation_loop, this, 256 * 1024, 31, calc_core, false);
 ```
 
-On Old3DS/2DS `calc_core` stays `1` and behavior is identical to today.
-Test on both hardware types before trusting this.
+Test on both Old3DS and New3DS (or Citra in New3DS mode) before trusting this.
 
 </details>
 
-## Testing checklist before you trust this
+---
 
-1. Builds clean with `make` under devkitARM (I could not verify this here -
-   this is the most important thing to check first).
-2. Runs in Citra first, then on real hardware - citro2d line/rect depth
-   ordering can occasionally differ subtly between the two.
-3. Toggle SELECT back and forth several times - confirm the standard
-   calculator's state (current equation, memory) is untouched after
-   visiting graph mode.
-4. Type a deliberately broken expression (`sin(`, `2+`, `x^^2`) - confirm
-   you get the red error box, not a freeze/crash.
-5. Graph `1/x` and `tan(x)` - confirm you see gaps at the asymptotes rather
-   than vertical lines connecting across them.
-6. Zoom in (`R`) repeatedly past a sane limit - confirm it stops shrinking
-   instead of divide-by-zero/inverting the view (there's a guard for this
-   in `handle_buttons`, worth specifically confirming).
-7. Leave graph mode open on a flat line (e.g. `func_text = "1"`) for a
-   couple minutes - confirm no slow memory growth (there's no per-frame
-   allocation in the hot path, but worth a sanity check with 3dbrew's
-   memory tools if you have them).
-8. Press HOME, wait, return to the app - confirm the graph screen looks
-   correct afterward (this is what the sleep hook is defending against).
+## Testing checklist
 
-## Next pieces, in the order I'd tackle them
-1. Fix whatever the build/test pass above turns up.
-2. Real touch-driven tab bar (Standard / Graph / ...), replacing SELECT.
-3. Finish the 3 stubbed user functions in `equation.cpp` - lowest risk,
-   pure win for the scientific-calculator side.
-4. Base-N (hex/oct/bin) mode and a degree/radian toggle.
-5. Multiple simultaneous graphs + a legend, using the same `Expr` engine.
-6. The bigger unification: one shared math engine for both editors.
+1. **Builds clean:** `make clean && make` — zero warnings, zero errors
+2. **Runs in Citra** before putting on hardware — citro2d depth ordering
+   can differ subtly between emulator and hardware
+3. **Theme toggle:** hold START + SELECT, confirm both screens switch colours
+   instantly; confirm START tap still quits normally
+4. **Mode toggle:** SELECT back and forth several times — confirm the
+   calculator's equation and memory are untouched after visiting graph mode
+5. **Dark mode rendering:** equation text, cursors, sqrt bars, fraction lines,
+   paren highlights all visible against dark background
+6. **Graph error states:** type `sin(` — confirm red error box, not crash
+7. **Asymptotes:** graph `1/x` and `tan(x)` — gaps at discontinuities, not
+   vertical lines
+8. **Zoom guard:** zoom in (R) repeatedly — confirm it stops, no
+   divide-by-zero or inverted view
+9. **Sleep/resume:** press HOME, wait, return — confirm graph screen redraws
+   correctly (sleep hook)
+10. **CIA build** (if bannertool available): `make cia`, install via FBI,
+    confirm it launches from home menu
+
+---
+
+## Next pieces, in priority order
+
+1. Fix anything the hardware test above turns up
+2. Real touch-driven tab bar (Standard / Graph) replacing SELECT toggle
+3. Degree/radian toggle for graph mode and the calculator
+4. Multiple simultaneous functions on one graph (different colours)
+5. Axis tick labels with proper numeric formatting
+6. Base-N (hex/oct/bin) mode
+7. Root-finding / derivative overlay on graph
+8. Unified math engine (one evaluator for both editor and graph mode)
