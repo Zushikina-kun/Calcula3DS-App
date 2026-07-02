@@ -1,0 +1,3 @@
+[submodule "CalculaThreeDS"]
+	path = CalculaThreeDS
+	url = https://github.com/LiquidFenrir/CalculaThreeDS
