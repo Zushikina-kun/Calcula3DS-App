@@ -1,11 +1,14 @@
 # Calcula3DS
 
-A scientific calculator with graphing for the Nintendo 3DS, built on
-[CalculaThreeDS](https://github.com/LiquidFenrir/CalculaThreeDS) by LiquidFenrir.
+A **scientific calculator** for the Nintendo 3DS with full graphing support,
+built on [CalculaThreeDS](https://github.com/LiquidFenrir/CalculaThreeDS) by LiquidFenrir.
 
-This repo adds a **graph mode**, a **dark/light theme system**, and a
-collection of bug fixes on top of the original app — all without touching
-the original calculator's core logic.
+Designed for students — covers everything from basic arithmetic through
+complex numbers, trigonometry, logarithms, and function graphing, all in
+your pocket on a 3DS.
+
+This repo adds **graph mode**, a **dark/light theme system**, and a set of
+bug fixes on top of the original app.
 
 ---
 
@@ -13,7 +16,7 @@ the original calculator's core logic.
 
 > Default dark theme on the original 3DS blue model.
 
-| Calculator | Graph mode |
+| Scientific Calculator | Graph mode |
 |---|---|
 | Dark keyboard with blue-slate keys | f(x) plotter on deep-navy background |
 
@@ -21,25 +24,72 @@ the original calculator's core logic.
 
 ## Features
 
-### Standard calculator
-- Complex number support
-- Pretty-printed equations: fractions, exponents, roots, absolute values
-- 12-entry scrollable memory history
-- Scientific functions: `sin cos tan asin acos atan sinh cosh tanh ln log sqrt abs exp conj`
-- Variables: `a-n, x-z, ans, i, pi`
+### Scientific Calculator ← the main mode
+This is what the app is primarily for. A full-featured scientific calculator
+with a pretty-printed equation editor — fractions render as actual fractions,
+exponents sit above the baseline, roots show the radical symbol. Everything
+looks like it does in your textbook.
+
+**Arithmetic & algebra**
+- All standard operations: `+  −  ×  ÷`
+- Exponents with the `^` key — rendered in superscript
+- Fractions rendered as numerator over denominator (not `a/b`)
+- Square roots and nth roots with the radical symbol
+- Parentheses with auto-matching highlight
+- Absolute value `|x|` with proper bracket rendering
+- Conjugate `conj(z)` for complex expressions
+
+**Scientific functions — 3 keyboard pages**
+| Page | Functions |
+|---|---|
+| Basic | `( )  ^  /` (fraction)  `del  .  0–9  +  −  ×  =` |
+| Functions | `sin  cos  tan  asin  acos  atan  exp  abs` |
+|  | `acos  asin  atan  ln  sqrt  cosh  sinh  tanh  log  conj` |
+|  | `acosh  asinh  atanh` |
+| Variables | `a–n, x–z, ans, i, pi, >` (store to variable) |
+
+**Number types**
+- Real numbers with up to 12 significant figures
+- **Complex numbers** — full support throughout every function
+  (e.g. `sqrt(-1)` → `i`, `ln(-1)` → `iπ`)
+- Constants: `pi` (π), `e` (via the `exp` key), `i` (imaginary unit)
+- `ans` — recalls the last result into the current expression
+- Named variables `a–z` — store with `>`, reuse in later expressions
+
+**Memory**
+- 12-entry history — every calculation is saved automatically
+- Scroll the top screen to browse previous results
+- Press A on a memory entry to copy it back into the editor
+- Circle pad scrolls long equations or the memory list
+
+**Equation editor**
+- Touch any part of an equation to move the cursor there
+- D-pad left/right for fine cursor movement
+- B to delete, Y to clear and start fresh, A to calculate
+
+---
 
 ### Graph mode
-- Plot any `f(x)`: `sin(x)`, `x^2-3`, `sqrt(1-x^2)`, `1/x`, `tan(x)`, etc.
-- Circle pad to pan, L/R to zoom, X to reset, Y to toggle grid
-- Asymptotes and domain edges render as gaps — no false vertical lines
-- Parse errors shown inline — never crashes on bad input
+Press SELECT to switch to the graph plotter.
+
+- Type any `f(x)` using the 3DS system keyboard: `sin(x)`, `x^2-3`,
+  `sqrt(1-x^2)`, `1/x`, `tan(x)`, `e^x`, `abs(x)`, etc.
+- Asymptotes and domain edges draw as gaps — no false vertical lines
+- Pan with the circle pad, zoom with L/R, reset with X, grid toggle with Y
+- Parse errors shown in red on screen — the app never crashes on bad input
 - Correct redraw after HOME menu / system sleep
 
+Supported functions in graph mode: `sin cos tan asin acos atan sinh cosh tanh
+ln log sqrt abs exp` plus constants `pi` and `e`.
+
+---
+
 ### Dark / light theme
-- Defaults to **dark mode** — easy on the eyes in any lighting
-- Toggle at runtime: **hold START then press SELECT**
-- Two full palettes: dark (Material-inspired navy/slate) and light (clean white)
-- Every colour centralised in `theme.h` / `theme.cpp` — trivial to customise
+- **Defaults to dark mode** — easy on eyes in class or low light
+- Toggle anytime: **hold START then press SELECT**
+- Dark: Material-inspired navy background, slate keyboard keys, accent blue cursor
+- Light: clean white, original palette
+- Every colour is in `theme.cpp` — one line to change any colour
 
 ---
 
