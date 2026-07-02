@@ -1,198 +1,127 @@
-# Integration notes — Calcula3DS-App
+﻿# Integration notes - Calcula3DS-App
 
-This document covers every change made to the base CalculaThreeDS app,
-the reasoning behind each decision, and what to watch for when testing.
+Full record of every change, design decision, and testing checklist.
 
 ---
 
 ## Status
 
-**Fully integrated and building.** `make clean && make` passes with zero
-warnings under devkitARM on devkitPro. All files have been tested in the
-build system; hardware testing is still needed (see checklist below).
+Fully building. make clean && make and make cia both pass under devkitARM GCC 16.
 
 ---
 
-## Files added to `source/`
+## Session history
 
-All new files are **additive only** — they can be removed without touching
-any original file.
+Session 1 - Graph mode + theme: added graph_mode, expr_parser, ui_text, sleep_hook,
+theme.h/cpp (dark default), wired into main.cpp, added make cia.
+
+Session 2 - Scientific expansion + CIA build:
+- Added calcmode.h/cpp (DEG/RAD) and cplxmode.h/cpp (RECT/POLAR)
+- More keyboard page implemented (was empty - crash risk)
+- 10 new evaluators: fact floor ceil round nCr nPr mod logn pol rec
+- CalcMode wired into all trig and inverse trig evaluators
+- Polar display in number.cpp via CplxMode::is_polar()
+- All new button labels registered in text.cpp menu atlas
+- bannertool + makerom downloaded; banner.png and banner.wav generated
+- cia/app.rsf rewritten for makerom v0.19
+- Fixed ARM gcc 16 error: .real() on plain double in acos/asin/atan
+
+---
+
+## New files
 
 | File | Purpose |
 |---|---|
-| `theme.h / theme.cpp` | Runtime dual-theme palette (dark + light). `extern u32` variables set by `Theme::set(ID)`. All colours in one place — nothing hardcoded inline anywhere in the codebase. |
-| `graph_mode.h / graph_mode.cpp` | f(x) plotter. Coordinate transforms, dirty-flag sampling loop, citro2d drawing, system keyboard (swkbd) for function input. |
-| `expr_parser.h / expr_parser.cpp` | Self-contained recursive-descent parser and evaluator. Bounded recursion (kMaxDepth=32), bounded node count (256 nodes), no allocation during eval. |
-| `ui_text.h / ui_text.cpp` | Thin text rendering wrapper over the existing `TextMap::char_to_sprite->equ` atlas. Additive — does not touch `text.cpp`. |
-| `sleep_hook.h / sleep_hook.cpp` | APT lifecycle hook. Uses `std::atomic<bool>` with acquire/release ordering (replaces original `volatile bool` design). |
-
-The Makefile globs `*.cpp`/`*.h` in `source/` — no Makefile changes needed
-for these files beyond what's already there.
-
----
-
-## Files modified
-
-### `main.cpp`
-
-- Includes `graph_mode.h`, `sleep_hook.h`, `theme.h` (replaces `colors.h`)
-- `Theme::set(Theme::DARK)` called at startup — dark mode is the default
-- SELECT alone toggles calculator ↔ graph mode
-- Hold START + press SELECT toggles dark ↔ light theme
-- Sleep hook connected: `lifecycle.consume_resume_flag()` → `graph.invalidate()`
-- `C2D_TargetClear` colours updated to `Theme::BG`
-- `KEY_START` and `KEY_SELECT` masked from both input dispatch paths so
-  neither leaks into `kb.handle_buttons` or `graph.handle_buttons`
-
-### `keyboard.cpp`
-
-- `#include "colors.h"` replaced with `#include "theme.h"`
-- Every `COLOR_*` reference replaced with the corresponding `Theme::*` name
-- `C2D_Color32(0,0,0,255)` cursor → `Theme::CURSOR`
-- `C2D_Color32(0,0,0,128)` scroll arrows → `Theme::FG_ARROW`
-- `COLOR_BLACK` gap bar fill → `Theme::SURFACE`
-- `COLOR_BLUE` button face → `Theme::KEY_FACE`
-- Button labels now use a separate `label_tint` at `Theme::KEY_LABEL`
-  (previously the label was the same tint as the button face, making it
-  invisible in dark mode)
-- "select graph" hint drawn **before** the `COLOR_HIDE` overlay so it
-  dims correctly when the top screen is selected
-
-### `equation.cpp`
-
-- `#include "colors.h"` replaced with `#include "theme.h"`
-- `COLOR_BLACK` text/line tints → `Theme::FG`
-- `COLOR_GRAY` temp-paren tint → `Theme::FG_DIM`
-- `COLOR_BLUE` selected-paren tint → `Theme::KEY_FACE`
-- **Bug fix:** `if(final_rpn.empty()) std::make_pair(...)` was missing
-  `return` — the expression was a no-op, so an empty RPN silently continued
-  into the evaluator. Fixed to `return std::make_pair(Number{}, true)`.
-
-### `number.cpp`
-
-- `#include "colors.h"` replaced with `#include "theme.h"`
-- Answer bar background → `Theme::ANS_BAR_BG`
-- Answer bar text tint → `Theme::ANS_BAR_FG`
-
-### `graph_mode.cpp`
-
-- `#include "colors.h"` replaced with `#include "theme.h"`
-- All drawing uses `Theme::GRAPH_*` and `Theme::FG*` constants
-- Hardcoded `constexpr u32 CURVE_COLOR` removed — now `Theme::GRAPH_CURVE`
-- `px_to_x` return type changed `float` → `double` (precision fix)
-- `y_to_py` parameter type changed `float` → `double` (precision fix)
-- `y_to_py(0.0f)` axis call updated to `y_to_py(0.0)`
-
-### `Makefile`
-
-- `-DARM11 -D_3DS` → `-D__3DS__` (removes compiler warning on every build)
-- Added `cia` phony target with `bannertool` / `makerom` guard and
-  `cia/app.rsf` RSF configuration
+| theme.h/.cpp | Runtime dual-theme palette. All colours in one place. |
+| calcmode.h/.cpp | Angle mode - RAD default. to_rad()/from_rad() for all trig and pol/rec. |
+| cplxmode.h/.cpp | Complex display - RECT default. is_polar() queried in number.cpp. |
+| graph_mode.h/.cpp | f(x) plotter: transforms, dirty-flag sampling, citro2d draw, swkbd. |
+| expr_parser.h/.cpp | Recursive-descent parser. kMaxDepth=32, 256 node budget. |
+| ui_text.h/.cpp | Thin wrapper over TextMap equ atlas. Does not touch text.cpp. |
+| sleep_hook.h/.cpp | APT lifecycle hook using std::atomic<bool> acquire/release. |
 
 ---
 
-## Why a separate expression parser for graph mode
+## Modified files
 
-The existing `Equation` class is the pretty-printing editor driven by
-`Keyboard`'s private `add_part_at()` and `variables` map. Reusing it for
-graph mode would mean either exposing private internals or replicating how
-`Keyboard` drives `Equation` — both are regression risks. `Expr` is small,
-independently testable, and deliberately mirrors the existing engine's
-function names (`ln` = natural log, `log` = log10) so it feels like one app.
+main.cpp: Theme::set(DARK) at startup. SELECT toggles modes. Hold START+SELECT toggles theme.
+START tap < 800ms quits. lifecycle.consume_resume_flag() -> graph.invalidate().
 
-**Future unification path:** extract `Equation::calculate`'s
-function-dispatch table into something `Expr` can call directly. Out of
-scope until the graph side is confirmed stable on hardware.
+keyboard.cpp: Added calcmode.h + cplxmode.h. toggle_angle_mode() and toggle_cplx_mode()
+added. More page: row0=fact nCr nPr mod logn, row1=floor ceil round pol rec,
+row2=cplx(col3), row3=deg(col4). Gap bar: deg/rad and pol indicators.
+Separate KEY_LABEL tint (labels were invisible in dark mode).
 
----
+equation.cpp: CalcMode::to_rad() on trig inputs, from_rad() on inverse trig.
+Removed .real() from acos/asin/atan (ARM gcc 16 error - these return plain double).
+New single-arg: fact, floor, ceil, round.
+New two-arg: nCr, nPr, mod, logn, pol, rec.
+sci_pol(x,y)=Number(hypot(x,y), from_rad(atan2(y,x)))
+sci_rec(r,t)=Number(r*cos(to_rad(t)), r*sin(to_rad(t)))
 
-## Why a separate theme system instead of a config file
+number.cpp: Added cplxmode.h + calcmode.h. Polar render when is_polar() and imag!=0.
+Renders as r>theta. Buffer 64->80 bytes.
 
-The 3DS has no writable filesystem accessible without romfsInit/romfsExit
-overhead per write, and no standard config format in libctru. A runtime
-palette stored in global variables is the lightest possible approach:
-- Zero I/O
-- Zero allocation
-- Toggle is instant (next frame picks up new colours)
-- `theme.cpp` is the single place to add colours or new themes
+text.cpp: New menu atlas entries for fact nCr nPr mod logn floor ceil round deg pol rec cplx.
+Composed from existing letter sprites - no new sprites needed.
 
----
+Makefile: -DARM11 -D_3DS -> -D__3DS__. make cia target added.
 
-## Theme toggle controls
-
-| Input | Action |
-|---|---|
-| SELECT (alone) | Toggle calculator ↔ graph mode |
-| Hold START + press SELECT | Toggle dark ↔ light theme |
-| START tap (release before ~800ms) | Quit |
-
-The 800ms threshold means a normal quit tap won't accidentally trigger the
-theme toggle, and holding START long enough to toggle won't quit.
+cia/app.rsf: Rewritten for makerom v0.19. ExHeader removed, fields in AccessControlInfo/
+SystemControlInfo. SaveDataSize: 0KB. SystemCallAccess + ServiceAccessControl added.
 
 ---
 
-## Optional: New3DS syscore for the calculation thread
+## Design notes
 
-**Skip if you are on an original 3DS or 2DS.** This change only benefits
-New3DS hardware.
+pol(x,y) packs result as Number(r, theta). CplxMode::POLAR renders as r>theta.
+The > (assign arrow) is the angle separator - the atlas has no angle symbol.
 
-<details>
-<summary>New3DS-only: syscore thread affinity (click to expand)</summary>
+expr_parser is separate from Equation because Equation is coupled to Keyboard internals.
 
-`main.cpp` calls `APT_SetAppCpuTimeLimit(30)` at startup. On New3DS this
-grants permission to use the syscore (the extra core Old3DS doesn't have).
-`keyboard.cpp`'s calculation thread uses affinity `1` so that permission is
-never used — the thread competes with the render thread on core 1.
+---
 
-Change in `Keyboard::start_calculating`:
-```cpp
-// before:
-calcThread = threadCreate(calculation_loop, this, 256 * 1024, 31, 1, false);
+## Bug fixes
 
-// after:
-s32 calc_core = 1;
-bool is_n3ds = false;
-if(R_SUCCEEDED(APT_CheckNew3DS(&is_n3ds)) && is_n3ds)
-    calc_core = -2; // New3DS syscore
-calcThread = threadCreate(calculation_loop, this, 256 * 1024, 31, calc_core, false);
-```
-
-Test on both Old3DS and New3DS (or Citra in New3DS mode) before trusting this.
-
-</details>
+| File | Bug | Fix |
+|---|---|---|
+| equation.cpp | Missing return on final_rpn.empty() | return make_pair(Number{}, true) |
+| equation.cpp | .real() on double from acos/asin/atan | Removed .real() |
+| graph_mode.cpp | px_to_x returned float | Changed to double |
+| graph_mode.cpp | y_to_py took float | Changed to double |
+| sleep_hook.h | volatile bool | std::atomic<bool> acquire/release |
+| keyboard.cpp | Hint drawn after dim overlay | Moved before overlay |
+| Makefile | Wrong define | -D__3DS__ |
+| cia/app.rsf | Old ExHeader format | Rewritten for makerom v0.19 |
 
 ---
 
 ## Testing checklist
 
-1. **Builds clean:** `make clean && make` — zero warnings, zero errors
-2. **Runs in Citra** before putting on hardware — citro2d depth ordering
-   can differ subtly between emulator and hardware
-3. **Theme toggle:** hold START + SELECT, confirm both screens switch colours
-   instantly; confirm START tap still quits normally
-4. **Mode toggle:** SELECT back and forth several times — confirm the
-   calculator's equation and memory are untouched after visiting graph mode
-5. **Dark mode rendering:** equation text, cursors, sqrt bars, fraction lines,
-   paren highlights all visible against dark background
-6. **Graph error states:** type `sin(` — confirm red error box, not crash
-7. **Asymptotes:** graph `1/x` and `tan(x)` — gaps at discontinuities, not
-   vertical lines
-8. **Zoom guard:** zoom in (R) repeatedly — confirm it stops, no
-   divide-by-zero or inverted view
-9. **Sleep/resume:** press HOME, wait, return — confirm graph screen redraws
-   correctly (sleep hook)
-10. **CIA build** (if bannertool available): `make cia`, install via FBI,
-    confirm it launches from home menu
+1. make clean && make - zero warnings
+2. make cia - cia produced
+3. Citra before hardware
+4. Theme toggle: hold START+SELECT; START tap quits
+5. DEG: sin(90)=1, asin(1)=90
+6. RAD: sin(pi/2)=1
+7. More page reachable via L/R
+8. pol(3,4)=5>53.13 (deg) or 5>0.927 (rad)
+9. rec(5,53.13)=3+4i in DEG
+10. cplx toggle: sqrt(-1) -> polar, again -> a+bi
+11. fact(10)=3628800, nCr(10,3)=120
+12. Graph sin( -> red error
+13. Graph 1/x and tan(x): gaps at discontinuities
+14. HOME -> return -> graph redraws
+15. CIA installs and launches
 
 ---
 
-## Next pieces, in priority order
+## Next priorities
 
-1. Fix anything the hardware test above turns up
-2. Real touch-driven tab bar (Standard / Graph) replacing SELECT toggle
-3. Degree/radian toggle for graph mode and the calculator
-4. Multiple simultaneous functions on one graph (different colours)
-5. Axis tick labels with proper numeric formatting
-6. Base-N (hex/oct/bin) mode
-7. Root-finding / derivative overlay on graph
-8. Unified math engine (one evaluator for both editor and graph mode)
+1. Fix anything hardware testing finds
+2. DEG/RAD in graph mode
+3. Multiple simultaneous graph functions
+4. Statistics mode
+5. Unit conversion page
+6. Table mode - f(x) table on top screen
+7. Base-N mode
