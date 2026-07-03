@@ -3,8 +3,9 @@
 A **scientific calculator** for the Nintendo 3DS with full graphing support,
 built on [CalculaThreeDS](https://github.com/LiquidFenrir/CalculaThreeDS) by LiquidFenrir.
 
-Adds: **graph mode**, **dark/light theme**, scientific functions (fact nCr nPr mod logn
-floor ceil round pol rec), deg/rad switching, complex display toggle, and bug fixes.
+Adds: **graph mode**, **dark/light theme**, scientific functions (fact, nCr, nPr,
+mod, logn, floor, ceil, round, pol, rec), **deg/rad switching**, **complex display
+toggle**, and bug fixes.
 
 ---
 
@@ -57,8 +58,7 @@ Press SELECT to switch to the f(x) graph plotter.
 - Pan: circle pad | Zoom: L/R | Reset: X | Grid: Y
 - Parse errors shown in red, never crashes on bad input
 - Correct redraw after HOME menu or sleep
-- Note: graph mode always evaluates in radians. A rad-only warning
- is shown on screen when the calculator is in DEG mode.
+- Note: graph mode always evaluates in radians. A rad-only warning is shown when in DEG mode.
 
 ---
 
@@ -67,7 +67,7 @@ Press SELECT to switch to the f(x) graph plotter.
 - Defaults to dark mode
 - Toggle: hold START then press SELECT
 - Theme change immediately repaints all screens including equation history
-- All colours in source/theme.cpp
+- All colours defined in source/theme.cpp
 
 ---
 
@@ -118,37 +118,8 @@ Press SELECT to switch to the f(x) graph plotter.
  make # out/CalculaThreeDS.3dsx
  make cia # out/CalculaThreeDS.cia
 
-Windows env (run before make):
- set DEVKITPRO=/opt/devkitpro
- set DEVKITARM=/opt/devkitpro/devkitARM
- add devkitARM/bin, tools/bin, msys2/usr/bin to PATH
-
----
-
-## Project structure
-
- Calcula3DS-App/
- +-- CalculaThreeDS/
- | +-- source/
- | | +-- main.cpp
- | | +-- theme.h/.cpp (dual-theme palette)
- | | +-- calcmode.h/.cpp (DEG/RAD angle mode)
- | | +-- cplxmode.h/.cpp (RECT/POLAR complex display)
- | | +-- graph_mode.h/.cpp (f(x) graph mode)
- | | +-- expr_parser.h/.cpp (parser for graph mode)
- | | +-- ui_text.h/.cpp (text rendering for graph mode)
- | | +-- sleep_hook.h/.cpp (APT sleep/resume hook)
- | | +-- keyboard.h/.cpp (calculator keyboard and input)
- | | +-- equation.h/.cpp (equation renderer and evaluator)
- | | +-- number.h/.cpp (complex number display)
- | | +-- text.h/.cpp (glyph atlas)
- | +-- cia/
- | | +-- app.rsf (makerom v0.19 config)
- | | +-- banner.png (256x128 banner)
- | | +-- banner.wav (silent WAV)
- | +-- Makefile
- +-- INTEGRATION_NOTES.md
- +-- README.md
+Windows env: DEVKITPRO=/opt/devkitpro, DEVKITARM=/opt/devkitpro/devkitARM,
+add devkitARM/bin, tools/bin, msys2/usr/bin to PATH.
 
 ---
 
@@ -156,19 +127,19 @@ Windows env (run before make):
 
 | File | Change |
 |---|---|
-| theme.h/.cpp | NEW - runtime dual-theme palette |
+| theme.h/.cpp | NEW - dual-theme palette |
 | calcmode.h/.cpp | NEW - DEG/RAD angle mode |
 | cplxmode.h/.cpp | NEW - RECT/POLAR complex display |
 | graph_mode.h/.cpp | NEW - f(x) graph mode |
-| expr_parser.h/.cpp | NEW - parser/evaluator for graph mode |
+| expr_parser.h/.cpp | NEW - parser for graph mode |
 | ui_text.h/.cpp | NEW - text rendering for graph mode |
 | sleep_hook.h/.cpp | NEW - APT lifecycle hook |
 | main.cpp | SELECT/theme/sleep-hook wiring; dark default; kb.invalidate() on theme toggle |
 | keyboard.h/.cpp | Theme colours; More page; mode indicators; Keyboard::invalidate() |
-| equation.cpp | 10 new functions; trig deg/rad conversion; bug fixes |
-| number.cpp | Polar display via CplxMode |
+| equation.cpp | 10 new functions; trig deg/rad; crash fixes |
+| number.cpp | Polar display; crash fix |
 | text.cpp | All More-page labels in menu atlas |
-| graph_mode.cpp | Theme colours; rad-only warning; removed dead py_to_y |
+| graph_mode.cpp | Theme colours; rad-only warning; dead code removed |
 | Makefile | Fixed define; make cia target |
 | cia/app.rsf | Rewritten for makerom v0.19 |
 
@@ -178,11 +149,15 @@ Windows env (run before make):
 |---|---|
 | equation.cpp | Missing return on empty RPN - silent crash |
 | equation.cpp | .real() on plain double from acos/asin/atan (ARM gcc 16) |
-| graph_mode.cpp | px_to_x / y_to_py float -> double |
+| equation.cpp | All equ.at() replaced with find() - no more throws on unknown chars |
+| keyboard.cpp | menu.at() replaced with find() - crash when drawing More page (confirmed crash cause) |
+| keyboard.cpp | equ.at() on screen name replaced with find() |
+| number.cpp | equ.at() replaced with find() - crash on any char not in atlas |
+| graph_mode.cpp | Dead py_to_y() removed |
+| keyboard.cpp | Dead YES_TINT etc removed |
+| main.cpp | Theme toggle did not repaint equation/memory textures |
 | sleep_hook.h | volatile bool -> std::atomic<bool> |
 | keyboard.cpp | Hint drawn after dim overlay |
-| keyboard.cpp | Removed dead YES_TINT/NO_TINT code set once and never read |
-| main.cpp | Theme toggle did not repaint equation/memory textures (kb.invalidate()) |
 | Makefile | Wrong compiler define |
 
 ---
