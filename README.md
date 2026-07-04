@@ -1,8 +1,8 @@
-﻿# Calcula3DS
+﻿# ScieCalc3DS
 
 Scientific calculator for Nintendo 3DS with graph mode, dark/light theme, and scientific function expansion.
 
-Built on [CalculaThreeDS](https://github.com/LiquidFenrir/CalculaThreeDS) by LiquidFenrir.
+Built on [CalculaThreeDS](https://github.com/LiquidFenrir/CalculaThreeDS (original base)) by LiquidFenrir.
 
 ---
 
@@ -98,8 +98,8 @@ Press SELECT to switch to the f(x) graph plotter.
 | [makerom v0.19+](https://github.com/3DSGuy/Project_CTR/releases) | CIA only - place in devkitPro\tools\bin |
 | [bannertool](https://github.com/diasurgical/bannertool/releases) | CIA only - place in devkitPro\tools\bin |
 
- git clone --recurse-submodules https://github.com/Zushikina-kun/Calcula3DS-App.git
- cd Calcula3DS-App/CalculaThreeDS
+ git clone --recurse-submodules https://github.com/Zushikina-kun/ScieCalc3DS-App.git
+ cd ScieCalc3DS-App/CalculaThreeDS
  make # out/CalculaThreeDS.3dsx
  make cia # out/CalculaThreeDS.cia
 
@@ -129,5 +129,5 @@ Press SELECT to switch to the f(x) graph plotter.
 
 ## Credits
 
-Original CalculaThreeDS by [LiquidFenrir](https://github.com/LiquidFenrir/CalculaThreeDS).
+Original CalculaThreeDS by [LiquidFenrir](https://github.com/LiquidFenrir/CalculaThreeDS (original base)).
 Graph mode, theme, scientific expansion, and fixes by [Zushikina-kun](https://github.com/Zushikina-kun).
