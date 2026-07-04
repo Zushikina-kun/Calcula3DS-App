@@ -4,8 +4,19 @@ A **scientific calculator** for the Nintendo 3DS with full graphing support,
 built on [CalculaThreeDS](https://github.com/LiquidFenrir/CalculaThreeDS) by LiquidFenrir.
 
 Adds: **graph mode**, **dark/light theme**, scientific functions (fact, nCr, nPr,
-mod, logn, floor, ceil, round, pol, rec), **deg/rad switching**, **complex display
-toggle**, and bug fixes.
+mod, logn, floor, ceil, round, pol, rec), **deg/rad switching**, **complex display toggle**,
+and numerous stability fixes for Old 3DS.
+
+---
+
+## Version history
+
+| Version | Changes |
+|---|---|
+| v1.0.3 | **Startup crash fixed.** Removed APT_SetAppCpuTimeLimit, explicit heap sizes set. |
+| v1.0.2 | Added -fno-exceptions, null sprite check, strtod in parser. |
+| v1.0.1 | Replaced all .at() with .find() to prevent exception-based heap corruption. |
+| v1.0.0 | Initial release (crashes on startup on Old 3DS). |
 
 ---
 
@@ -24,7 +35,7 @@ Pretty-printed equation editor - fractions, exponents, roots render like a textb
 | Variables | a-n, x-z, ans, i, pi, > (store to variable) |
 | More | fact nCr nPr mod logn / floor ceil round pol rec / cplx deg |
 
-**More page functions**
+**More page**
 
 | Button | Syntax | What it does |
 |---|---|---|
@@ -41,10 +52,10 @@ Pretty-printed equation editor - fractions, exponents, roots render like a textb
 | deg | -- | Toggle DEG / RAD angle mode |
 | cplx | -- | Toggle a+bi / r>theta display |
 
-Angle mode indicator: shows deg or rad in the gap bar.
-Complex mode indicator: shows pol when polar display is active.
+**Angle mode indicator:** shows deg or rad in the gap bar at all times.
+**Complex mode indicator:** shows pol in the gap bar when polar display is active.
 
-Number types: real, complex, pi, e, i, ans, variables a-z.
+Number types: real, complex, pi, e, i, ans, named variables a-z.
 Memory: 12-entry history. Scroll top screen; press A to paste entry back.
 
 ---
@@ -57,8 +68,7 @@ Press SELECT to switch to the f(x) graph plotter.
 - Asymptotes render as gaps - no false vertical lines
 - Pan: circle pad | Zoom: L/R | Reset: X | Grid: Y
 - Parse errors shown in red, never crashes on bad input
-- Correct redraw after HOME menu or sleep
-- Note: graph mode always evaluates in radians. A rad-only warning is shown when in DEG mode.
+- Note: graph mode evaluates in radians. A rad-only warning shows when in DEG mode.
 
 ---
 
@@ -66,8 +76,7 @@ Press SELECT to switch to the f(x) graph plotter.
 
 - Defaults to dark mode
 - Toggle: hold START then press SELECT
-- Theme change immediately repaints all screens including equation history
-- All colours defined in source/theme.cpp
+- Theme change repaints all screens including equation history
 
 ---
 
@@ -118,54 +127,27 @@ Press SELECT to switch to the f(x) graph plotter.
  make # out/CalculaThreeDS.3dsx
  make cia # out/CalculaThreeDS.cia
 
-Windows env: DEVKITPRO=/opt/devkitpro, DEVKITARM=/opt/devkitpro/devkitARM,
-add devkitARM/bin, tools/bin, msys2/usr/bin to PATH.
-
 ---
 
-## What changed from the original
-
-| File | Change |
-|---|---|
-| theme.h/.cpp | NEW - dual-theme palette |
-| calcmode.h/.cpp | NEW - DEG/RAD angle mode |
-| cplxmode.h/.cpp | NEW - RECT/POLAR complex display |
-| graph_mode.h/.cpp | NEW - f(x) graph mode |
-| expr_parser.h/.cpp | NEW - parser for graph mode |
-| ui_text.h/.cpp | NEW - text rendering for graph mode |
-| sleep_hook.h/.cpp | NEW - APT lifecycle hook |
-| main.cpp | SELECT/theme/sleep-hook wiring; dark default; kb.invalidate() on theme toggle |
-| keyboard.h/.cpp | Theme colours; More page; mode indicators; Keyboard::invalidate() |
-| equation.cpp | 10 new functions; trig deg/rad; crash fixes |
-| number.cpp | Polar display; crash fix |
-| text.cpp | All More-page labels in menu atlas |
-| graph_mode.cpp | Theme colours; rad-only warning; dead code removed |
-| Makefile | Fixed define; make cia target |
-| cia/app.rsf | Rewritten for makerom v0.19 |
-
-**Bug fixes**
+## Key bug fixes (all versions)
 
 | Where | Fix |
 |---|---|
-| equation.cpp | Missing return on empty RPN - silent crash |
-| equation.cpp | .real() on plain double from acos/asin/atan (ARM gcc 16) |
-| equation.cpp | All equ.at() replaced with find() - no more throws on unknown chars |
-| keyboard.cpp | menu.at() replaced with find() - crash when drawing More page (confirmed crash cause) |
-| keyboard.cpp | equ.at() on screen name replaced with find() |
-| number.cpp | equ.at() replaced with find() - crash on any char not in atlas |
-| graph_mode.cpp | Dead py_to_y() removed |
-| keyboard.cpp | Dead YES_TINT etc removed |
+| main.cpp | APT_SetAppCpuTimeLimit caused svcBreak startup crash on Old 3DS - removed |
+| main.cpp | Heap sizes not set - now 16MB + 8MB explicit |
+| keyboard.cpp | menu.at() crash on More page - replaced with find() |
+| equation.cpp, number.cpp | equ.at() crash on unknown chars - replaced with find() |
+| Makefile | Added -fno-exceptions (exception unwinding corrupts heap on Old 3DS) |
+| expr_parser.cpp | try/catch replaced with strtod |
+| equation.cpp | Missing return on empty RPN |
 | main.cpp | Theme toggle did not repaint equation/memory textures |
-| sleep_hook.h | volatile bool -> std::atomic<bool> |
-| keyboard.cpp | Hint drawn after dim overlay |
-| Makefile | Wrong compiler define |
 
 ---
 
 ## Known limitations
 
 - One function at a time in graph mode
-- Graph mode evaluates in radians only (warned on screen when in DEG mode)
+- Graph mode evaluates in radians only (DEG mode is calculator-only)
 - No root-finding, derivative, or integral overlays
 
 ---
