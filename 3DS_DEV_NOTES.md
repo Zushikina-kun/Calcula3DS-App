@@ -222,3 +222,30 @@ Always develop and test with Old 3DS constraints.
 - [ ] IdealProcessor:0 in app.rsf
 - [ ] Test in Citra first, then real hardware
 - [ ] Identical crash dumps = pre-main crash
+
+
+---
+
+## 12. If 3DSX works but CIA crashes - RSF parameters wrong
+
+The CIA and 3DSX are the same code but have different process setup.
+If the 3DSX works fine but the CIA crashes instantly:
+
+The kernel is rejecting the CIA process parameters from app.rsf BEFORE your code runs.
+The crash dumps will always be identical (same PC, same registers every time).
+
+Required process parameters for a working citro2d homebrew CIA (from cross-examination):
+
+| Parameter | Correct value |
+|---|---|
+| Priority | 16 (not 0x30) |
+| MaxCpu | 0 (let system decide) |
+| CanWriteSharedPage | true |
+| CanUseNonAlphabetAndNumber | true |
+| PermitMainFunctionArgument | true |
+| CanShareDeviceMemory | true |
+| SpecialMemoryArrange | true |
+| ReleaseKernelMinor | 33 |
+| Dependency list | required - include dsp, gsp, hid, cfg, ptm, apt |
+
+See CalculaThreeDS/cia/app.rsf for a complete working example.
